@@ -1,5 +1,5 @@
-# Spring相关面试题
 
+# Bean
 ## Bean的作用域
 
 **singleton** : 唯一 bean 实例，Spring 中的 bean 默认都是单例的。  
@@ -81,6 +81,30 @@ singletonFactories 的 key 为 beanName，value 为该 bean 对应的 bean 工�
 
 ### 可以只有两级缓存嘛? //todo
 
+解决代理对象（如aop）循环依赖的问题。
+
+例： a依赖b,b依赖a，同时a,b都被aop增强。
+
+首先明确aop的实现是通过 postBeanProcess后置处理器，在初始化之后做代理操作的。
+
+1. 只使用二级缓存，且二级缓存缓存的是一个不完整的bean
+
+    如果只使用二级缓存，且二级缓存缓存的是一个不完整的bean，这个时候a在设置属性的过程中去获取b（这个时候a还没有被aop的后置处理器增强），创建b的过程中，b依赖a，b去缓存中拿a拿到的是没有经过代理的a。就有问题。
+
+2. 使用二级缓存，且二级缓存是一个工厂方法的缓存
+
+    如果二级缓存是一个工厂的缓存，在从缓存中获取的时候获取到经过aop增强的对象。
+
+    a依赖b，b依赖a，c。c又依赖a。a,b，c均aop增强。
+
+    加载开始： a实例化，放入工厂缓存，设置b，b实例化，设置属性，拿到a,此时从工厂缓存中拿到代理后的a。由于a没加载完毕，不会放入一级缓存。这个时候b开始设置c,c实例化，设置属性a,又去工厂缓存中拿对象a。这个时候拿到的a和b从工厂缓存不是一个对象。出现问题。
+
+3. 使用二级缓存，二级缓存缓存的是增强后的bean。  
+    这个与spring加载流程不符合。spring加载流程是：实例化，设置属性，初始化，增强。在有循环引用的时候，之前的bean并不会增强后放入到二级缓存。
+
+
+
+
 
 ## Spring Bean 的注入过程
 
@@ -151,9 +175,9 @@ Spring ioc 容器的核心类是 AbstractApplicationContext，入口是 refresh(
 
 
 
-## AOP 
+# AOP 
 
-### 什么是AOP?
+## 什么是AOP?
 
 AOP（Aspect Oriented Programming）即面向切面编程，AOP 是 OOP（面向对象编程）的一种延续，二者互补，并不对立.
 
@@ -164,11 +188,11 @@ AOP（Aspect Oriented Programming）即面向切面编程，AOP 是 OOP（面向
 - **切点（Pointcut）**：一个切点是一个表达式，它用来匹配哪些连接点需要被切面所增强。切点可以通过注解、正则表达式、逻辑运算等方式来定义。比如 execution(* com.xyz.service..*(..))匹配 com.xyz.service 包及其子包下的类或接口。
 - **织入（Weaving）**：织入是将切面和目标对象连接起来的过程，也就是将通知应用到切点匹配的连接点上。常见的织入时机有两种，分别是编译期织入（AspectJ）和运行期织入（AspectJ）。
 
-### AOP 解决了什么问题？
+## AOP 解决了什么问题？
 
 OOP 不能很好地处理一些分散在多个类或对象中的公共行为（如日志记录、事务管理、权限控制、接口限流、接口幂等等），这些行为通常被称为 横切关注点（cross-cutting concerns） 。如果我们在每个类或对象中都重复实现这些行为，那么会导致代码的冗余、复杂和难以维护。AOP 可以将横切关注点（如日志记录、事务管理、权限控制、接口限流、接口幂等等）从 核心业务逻辑（core concerns，核心关注点） 中分离出来，实现关注点的分离。
 
-### AOP 实现方式有哪些？
+## AOP 实现方式有哪些？
 
 AOP 的常见实现方式有动态代理、字节码操作等方式。Spring AOP 就是基于动态代理的，如果要代理的对象，实现了某个接口，那么 Spring AOP 会使用 JDK Proxy，去创建代理对象，而对于没有实现接口的对象，就无法使用 JDK Proxy 去进行代理了，这时候 Spring AOP 会使用 Cglib 生成一个被代理对象的子类来作为代理，如下图所示：
 
@@ -178,7 +202,7 @@ Spring AOP 属于运行时增强，而 AspectJ 是编译时增强。 Spring AOP 
 
 如果我们的切面比较少，那么两者性能差异不大。但是，当切面太多的话，最好选择 AspectJ ，它比 Spring AOP 快很多。
 
-### AspectJ和Spring AOP的区别？
+## AspectJ和Spring AOP的区别？
 
 Spring AOP 属于**运行时增强**，主要具有如下特点：
 
@@ -201,6 +225,92 @@ AspectJ属于静态织入，通过修改代码来实现，有如下几个织入�
 
 ![alt text](pictures/PixPin_2024-03-26_22-39-21.png)
 
+
+# Spring事务
+
+## Spring事务传播行为
+
+什么叫事务传播行为？听起来挺高端的，其实很简单。
+
+即然是传播，那么至少有两个东西，才可以发生传播。单体不存在传播这个行为。
+
+事务传播行为（propagation behavior）指的就是当一个事务方法被另一个事务方法调用时，这个事务方法应该如何进行。
+
+例如：methodA事务方法调用methodB事务方法时，methodB是继续在调用者methodA的事务中运行呢，还是为自己开启一个新事务运行，这就是由methodB的事务传播行为决定的。
+
+Spring定义了七种传播行为：
+
+| 事务传播行为类型	| 说明| 
+| :---:|:---:|
+|PROPAGATION_REQUIRED |	如果当前没有事务，就新建一个事务，如果已经存在一个事务中，加入到这个事务中。这是最常见的选择。|
+| PROPAGATION_SUPPORTS|	支持当前事务，如果当前没有事务，就以非事务方式执行。|
+| PROPAGATION_MANDATORY	| 使用当前的事务，如果当前没有事务，就抛出异常。|
+| PROPAGATION_REQUIRES_NEW	| 新建事务，如果当前存在事务，把当前事务挂起。|
+| PROPAGATION_NOT_SUPPORTED	| 以非事务方式执行操作，如果当前存在事务，就把当前事务挂起。|
+| PROPAGATION_NEVER	| 以非事务方式执行，如果当前存在事务，则抛出异常。|
+| PROPAGATION_NESTED	| 如果当前存在事务，则在嵌套事务内执行。如果当前没有事务，则执行与PROPAGATION_REQUIRED类似的操作。|
+
+其中Spring的默认传播行为是`PROPAGATION_REQUIRED`
+
+## Spring事务失效
+
+1. **事务方法非public修饰**  
+由于Spring的事务是基于AOP的方式结合动态代理来实现的。因此事务方法一定要是public的，这样才能便于被Spring做事务的代理和增强。
+2. **非事务方法调用事务方法** 
+
+    有这样一段代码：
+    ~~~java
+    @Service
+    public class OrderService {
+
+        public void createOrder(){
+            // ... 准备订单数据
+
+            // 生成订单并扣减库存
+            insertOrderAndReduceStock();
+        }
+
+        @Transactional
+        public void insertOrderAndReduceStock(){
+            // 生成订单
+            insertOrder();
+            // 扣减库存
+            reduceStock();
+        }
+    }
+    ~~~
+    可以看到，`insertOrderAndReduceStock`方法是一个事务方法，肯定会被 Spring事务管理。Spring会给OrderService类生成一个动态代理对象，对 insertOrderAndReduceStock方法做增强，实现事务效果。
+
+    但是现在createOrder方法是一个非事务方法，在其中调用了   insertOrderAndReduceStock方法，这个调用其实隐含了一个<font color=red>this.</font>的前 缀。也就是说，**这里相当于是直接调用原始的OrderService中的普通方法**，而非被Spring代理对象的代理方法。那事务肯定就失效了！
+3. **事务方法的异常被捕获了**  
+Spring的事务管理就是要感知业务方法的异常，当捕获到异常后才会回滚事务。
+现在事务被捕获，就会导致Spring无法感知事务异常，自然不会回滚，事务就失效了。
+4. **事务异常类型不对**
+Spring的事务管理默认感知的异常类型是`RuntimeException`和`Error`，当事务方法内部抛出了一个IOException时，不会被Spring捕获，因此就不会触发事务回滚，事务就失效了
+5. **事务传播行为不对**
+    ~~~java
+    @Service
+     public class OrderService {
+        @Transactional
+        public void createOrder(){
+            // 生成订单
+            insertOrder();
+            // 扣减库存
+            reduceStock();
+            throw new RuntimeException("业务异常");
+        }
+        @Transactional
+        public void insertOrder() {
+        }
+        @Transactional(propagation = Propagation.REQUIRES_NEW)
+        public void reduceStock() {
+        }
+     }
+    ~~~
+    在示例代码中，事务的入口是`createOrder()`方法，会开启一个事务，可以成为外部事务。在`createOrder()`方法内部又调用了`insertOrder()`方法和`reduceStock()`方法。这两个都是事务方法。  
+    不过，`reduceStock()`方法的事务传播行为是`REQUIRES_NEW`，这会导致在进入reduceStock()方法时会创建一个新的事务，可以成为子事务。`insertOrder()`则是默认，因此会与createOrder()合并事务。  
+    **因此，当createOrder方法最后抛出异常时，只会导致insertOrder方法回滚，而不会导致reduceStock方法回滚，因为reduceStock是一个独立事务。**
+6. **没有被Spring管理**
 
 
 

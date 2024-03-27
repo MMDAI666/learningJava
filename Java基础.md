@@ -1,4 +1,5 @@
-# Java基础相关面试题
+
+# 基础知识
 
 ## java的多态
 
@@ -171,10 +172,61 @@ Atomic包里的类基本都是使用Unsafe实现的包装类。
 - AtomicLongFieldUpdater：原子更新长整型字段的更新器。
 - AtomicStampedReference：原子更新带有版本号的引用类型。该类将整数值与引用关联起来，可用于原子的更新数据和数据的版本号，可以解决使用CAS进行原子更新时可能出现的ABA问题。
 
-## 并发工具类 //todo
+## 并发工具类 
 
+### CountDownLatch
 
-## 双检锁 //todo
+CountDownLatch，倒计数器，有两个常见的应用场景：
+- 场景1：协调子线程结束动作：等待所有子线程运行结束  
+    CountDownLatch允许一个或多个线程等待其他线程完成操作。
+- 协调子线程开始动作：统一各线程动作开始的时机
+
+CountDownLatch的核心方法
+
+`await()`：等待latch降为0；  
+`boolean await(long timeout, TimeUnit unit)`：等待latch降为0，但是可以设置超时时间。比如有玩家超时未确认，那就重新匹配，总不能为了某个玩家等到天荒地老。  
+`countDown()`：latch数量减1；  
+`getCount()`：获取当前的latch数量。  
+
+### CyclicBarrier（同步屏障）
+
+CyclicBarrier的字面意思是可循环使用（Cyclic）的屏障（Barrier）。它要做的事情
+是，让一 组线程到达一个屏障（也可以叫同步点）时被阻塞，直到最后一个线程到达屏障时，屏障才会开门，所有被屏障拦截的线程才会继续运行。  
+它和CountDownLatch类似，都可以协调多线程的结束动作，在它们结束后都可以执行特定动作
+
+CyclicBarrier最最核心的方法，仍然是`await()`：
+
+如果当前线程不是第一个到达屏障的话，它将会进入等待，直到其他线程都到达，除非发生被中断、屏障被拆除、屏障被重设等情况；
+
+![alt text](pictures/PixPin_2024-03-27_13-32-05.png)
+
+### CyclicBarrier和CountDownLatch有什么区别
+
+两者最核心的区别：
+- CountDownLatch是一次性的，而CyclicBarrier则可以多次设置屏障，实现重复利用；CountDownLatch中的各个子线程不可以等待其他线程，只能完成自己的任务；
+- 而CyclicBarrier中的各个线程可以等待其他线程
+
+|CyclicBarrier | CountDownLatch | 
+| :---: | :---: |
+|  CyclicBarrier是可重用的，其中的线程会等待所有的线程完成任务。届时，屏障将被拆除，并可以选择性地做一些特定的动作。  | CountDownLatch是一次性的，不同的线程在同一个计数器上工作，直到计数器为0.  |
+| CyclicBarrier面向的是线程数  |  CountDownLatch面向的是任务数 |
+| 在使用CyclicBarrier时，你必须在构造中指定参与协作的线程数，这些线程必须调用await()方法  |  使用CountDownLatch时，则必须要指定任务数，至于这些任务由哪些线程完成无关紧要 |
+|  CyclicBarrier可以在所有的线程释放后重新使用 |  CountDownLatch在计数器为0时不能再使用 |
+| 在CyclicBarrier中，如果某个线程遇到了中断、超时等问题时，则处于await的线程都会出现问题  |  在CountDownLatch中，如果某个线程出现问题，其他线程不受影响 |
+
+### Semaphore（信号量）
+
+Semaphore（信号量）是用来控制同时访问特定资源的线程数量，它通过协调各个线程，以保证合理的使用公共资源。
+
+![alt text](pictures/PixPin_2024-03-27_13-37-21.png)
+
+### Exchanger
+
+Exchanger（交换者）是一个用于线程间协作的工具类。Exchanger用于进行线程间的数据交换。它提供一个同步点，在这个同步点，两个线程可以交换彼此的数据。
+
+两个线程通过 exchange方法交换数据，如果第一个线程先执行`exchange()`方法，它会一直等待第二个线程也执行exchange方法，当两个线程都到达同步点时，这两个线程就可以交换数据，将本线程生产出来的数据传递给对方。
+
+假如两个线程有一个没有执行exchange()方法，则会一直等待，如果担心有特殊情况发生，避免一直等待，可以使用 `exchange(V x, long timeOut, TimeUnit unit) `设置最大等待时长。
 
 
 ## Java中的引用类型
@@ -942,6 +994,57 @@ shutdown 和shutdownnow简单来说区别如下：
 - `protected void afterExecute(Runnable r, Throwable t)` // 任务执行后被调用
 - `protected void terminated()`// 线程池结束后被调用
 
+
+## 异常
+
+![alt text](pictures/PixPin_2024-03-27_12-34-59.png)
+
+Throwable 是 Java 语言中所有错误或异常的基类。 Throwable 又分为 Error 和 ception ，其中Error是系统内部错误，比如虚拟机异常，是程序无法处理的。Exception 是程序问题导致的异常，又分为两种：
+- CheckedException受检异常：编译器会强制检查并要求处理的异常。
+- RuntimeException运行时异常：程序运行中出现异常，比如我们熟悉的空指针、数组下标越界等等
+
+### 经典异常处理代码题
+
+1. ~~~java
+
+    public class TryDemo {
+        public static void main(String[] args) {
+            System.out.println(test());
+        }
+        public static int test() {
+            try {
+                return 1;
+            } catch (Exception e) {
+                return 2;
+            } finally {
+                System.out.print("3");
+            }
+        }
+     }
+    ~~~
+    执行结果：31。  
+    try、catch。inally 的基础用法，在 return 前会先执行 inally 语句块，所以是先输出 finally 里的 3，再输出 return 的 1。
+
+2. ~~~java
+
+    public class TryDemo {
+     public static void main(String[] args) {
+        System.out.println(test1());
+    }
+     public static int test1() {
+        int i = 0;
+        try {
+            i = 2;
+            return i;
+        } finally {
+            i = 3;
+        }
+    }
+    }
+    ~~~
+    执行结果：2。  
+    大家可能会以为结果应该是 3，因为在 return 前会执行 inally，而 i 在 inally 中被修改为 3 了，那最终返回 i 不是应该为 3 吗？
+    但其实，在执行 inally 之前，JVM 会先将 i 的结果暂存起来，然后 finally 执行完毕后，会返回之前暂存的结果，而不是返回 i，所以即使 i 已经被修改为 3，最终返回的还是之前暂存起来的结果 2。
 
 
 
